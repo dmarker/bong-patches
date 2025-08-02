@@ -1,0 +1,75 @@
+From d4c26a6e87c311342a6a3bb771d8d79d21d1876b Mon Sep 17 00:00:00 2001
+From: David Marker <dave@freedave.net>
+Date: Sat, 2 Aug 2025 06:51:08 -0300
+Subject: [PATCH 2/2] Always call if_ioctl for virtual interfaces.
+
+Virtual interfaces may refuse (for their own reasons) to accept
+either an IPv4 or IPv6 address.
+---
+ sys/netinet/in.c   | 6 +++---
+ sys/netinet6/in6.c | 4 +++-
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/sys/netinet/in.c b/sys/netinet/in.c
+index 963449d4b4..37ff367b29 100644
+--- a/sys/netinet/in.c
++++ b/sys/netinet/in.c
+@@ -616,23 +616,23 @@ in_aifaddr_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp, struct ucred *cred
+ 	CK_STAILQ_INSERT_TAIL(&ifp->if_addrhead, ifa, ifa_link);
+ 	IF_ADDR_WUNLOCK(ifp);
+ 
+ 	ifa_ref(ifa);			/* in_ifaddrhead */
+ 	sx_assert(&in_control_sx, SA_XLOCKED);
+ 	CK_STAILQ_INSERT_TAIL(&V_in_ifaddrhead, ia, ia_link);
+ 	CK_LIST_INSERT_HEAD(INADDR_HASH(ia->ia_addr.sin_addr.s_addr), ia,
+ 	    ia_hash);
+ 
+ 	/*
+-	 * Give the interface a chance to initialize
+-	 * if this is its first address,
+-	 * and to validate the address if necessary.
++	 * Give the interface a chance to initialize if this is its first
++	 * address, and to validate the address if necessary. IFT_PROPVIRTUAL
++	 * interfaces may refuse the address.
+ 	 */
+ 	if (ifp->if_ioctl != NULL) {
+ 		error = (*ifp->if_ioctl)(ifp, SIOCSIFADDR, (caddr_t)ia);
+ 		if (error)
+ 			goto fail1;
+ 	}
+ 
+ 	/*
+ 	 * Add route for the network.
+ 	 */
+diff --git a/sys/netinet6/in6.c b/sys/netinet6/in6.c
+index ce0655408a..5cb1cb92db 100644
+--- a/sys/netinet6/in6.c
++++ b/sys/netinet6/in6.c
+@@ -1530,21 +1530,23 @@ in6_notify_ifa(struct ifnet *ifp, struct in6_ifaddr *ia,
+ 
+ 		NET_EPOCH_ENTER(et);
+ 		CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+ 			if (ifa->ifa_addr->sa_family != AF_INET6)
+ 				continue;
+ 			ifacount++;
+ 		}
+ 		NET_EPOCH_EXIT(et);
+ 	}
+ 
+-	if (ifacount <= 1 && ifp->if_ioctl) {
++	/* IFT_PROPVIRTUAL always requires as it may refuse the address */
++	if ((ifacount <= 1 || ifp->if_type == IFT_PROPVIRTUAL) &&
++	    ifp->if_ioctl) {
+ 		error = (*ifp->if_ioctl)(ifp, SIOCSIFADDR, (caddr_t)ia);
+ 		if (error)
+ 			goto done;
+ 	}
+ 
+ 	/*
+ 	 * If a new destination address is specified, scrub the old one and
+ 	 * install the new destination.  Note that the interface must be
+ 	 * p2p or loopback.
+ 	 */
+-- 
+2.48.1
+

@@ -1,0 +1,57 @@
+From 67a854731a04e393d924b54ea802b60bda069888 Mon Sep 17 00:00:00 2001
+From: Mark Johnston <markj@FreeBSD.org>
+Date: Thu, 31 Jul 2025 13:46:22 -0300
+Subject: [PATCH 2/2] netgraph: Exit the net epoch to handle control messages
+ In general, in the direct dispatch case netgraph only enters the net epoch to
+ send data messages, but this was inconsistent with the netgraph thread, which
+ also entered the net epoch to send fn and fn2 messages to nodes.  Some
+ handlers, e.g., ng_bridge_newhook(), may sleep, and so cannot be called in
+ epoch context; the netgraph tests occasionally panic due to this problem.
+
+Make ngthread() consistent with the direct dispatch path.
+
+Discussed with:	afedorov (in D44615)
+MFC after:	2 weeks
+Sponsored by:	Klara, Inc.
+---
+ sys/netgraph/ng_base.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/sys/netgraph/ng_base.c b/sys/netgraph/ng_base.c
+index 5bff0663e03e..77c7cb0d3c00 100644
+--- a/sys/netgraph/ng_base.c
++++ b/sys/netgraph/ng_base.c
+@@ -3433,24 +3433,27 @@ ngthread(void *arg)
+ 			NG_QUEUE_LOCK(&node->nd_input_queue);
+ 			item = ng_dequeue(node, &rw);
+ 			if (item == NULL) {
+ 				node->nd_input_queue.q_flags2 &= ~NGQ2_WORKQ;
+ 				NG_QUEUE_UNLOCK(&node->nd_input_queue);
+ 				break; /* go look for another node */
+ 			} else {
+ 				NG_QUEUE_UNLOCK(&node->nd_input_queue);
+ 				NGI_GET_NODE(item, node); /* zaps stored node */
+ 
+-				if ((item->el_flags & NGQF_TYPE) == NGQF_MESG) {
++				if ((item->el_flags & NGQF_TYPE) != NGQF_DATA) {
+ 					/*
+-					 * NGQF_MESG items should never be processed in
+-					 * NET_EPOCH context. So, temporary exit from EPOCH.
++					 * NGQF_MESG, NGQF_FN and NGQF_FN2 items
++					 * should never be processed in
++					 * NET_EPOCH context; they generally
++					 * require heavier synchronization and
++					 * may sleep. So, temporarily exit.
+ 					 */
+ 					NET_EPOCH_EXIT(et);
+ 					ng_apply_item(node, item, rw);
+ 					NET_EPOCH_ENTER(et);
+ 				} else {
+ 					ng_apply_item(node, item, rw);
+ 				}
+ 
+ 				NG_NODE_UNREF(node);
+ 			}
+-- 
+2.48.1
+
