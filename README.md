@@ -9,6 +9,7 @@
 
 [30]: https://github.com/freebsd/freebsd-src/commit/86a6393a7d6766875a9e03daa0273a2e55faacdd
 [31]: https://github.com/freebsd/freebsd-src/commit/46f38a6dedb1b474f04b7c2b072825fda5d7bd5a
+[32]: https://github.com/freebsd/freebsd-src/commit/72d01e62b082de39ecf1ff3ced67dcf7259e5084
 
 # bong-patches
 
@@ -24,19 +25,22 @@ any plans to get any of these patches backported.
 | :---- | :----------- | :------------ | :---------- |
 |  0001 | [D44615][20] | [86a6393][30] | ng_bridge: allow to automatically assign numbers to new hooks |
 |  0002 | N/A          | [46f38a6][31] | netgraph: Exit the net epoch to handle control messages |
-|  0003 | [D50241][22] | 7 May, 2025   | Teach ngctl to attach and run itself in a jail. |
+|  0003 | [D50241][22] | [72d01e6][32] | Teach ngctl to attach and run itself in a jail. |
 |  0004 | not ready    |               | Teach netgraph to parse IPv6 addresses |
 |  0005 | not ready    |               | Always call if_ioctl for virtual interfaces. |
 
 
 You can tell if a patch is merged by it having a commit.
 
+`not ready` means I don't have the node that requires the patch yet. The patches themselves
+are ready.
+
 The second was not written by me, it was a bug I caused/exposed with my first
 patch. The bug was mentioned and discussed in the same review [D44615][20] as it
 broke automated tests.
 
 The examples in [bong-utils][11] assume you have [86a6393][30] and [46f38a6][31].
-The `jeiface` utility in [bong-utils][11] assumes you have [D50241][22].
+The `jeiface` utility in [bong-utils][11] assumes you have [72d01e6][32].
 
 Both `ng_siit` and `ng_nat64` will require the last two patches. There is no
 way to use them without these.
@@ -44,10 +48,11 @@ way to use them without these.
 My plan, if everything in table is merged, is to make 2 ports for [bong-kmods][10]
 and [bong-utils][11].
 
-I won't put `0004.patch` or `0005.patch` up for review until the nodes that use
-them are ready. `0004.patch` should not be controversial. `0005.patch` uses the
-same flag that ng_iface(4) uses and I will not be surprised if I'm requested to use
-a new flag instead (which is fine).
+I won't put [0004.patch](15/0004.patch) or [0005.patch](15/0005.patch) up for
+review until the nodes that use them are ready. [0004.patch](15/0004.patch) should
+not be controversial. [0005.patch](15/0005.patch) uses the same flag that ng_iface(4)
+uses and I will not be surprised if I'm requested to use a new flag instead (which
+is fine).
 
 I don't think these patches are controversial. Whereas the nodes and utilities
 in [bong-kmods][10] / [bong-utils][11] already appear so. I put up a review for
