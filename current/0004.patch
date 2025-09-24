@@ -1,0 +1,148 @@
+From 7fda333b91ba0d5fcf0ab6fb35d4c6b89e08fc97 Mon Sep 17 00:00:00 2001
+From: David Marker <dave@freedave.net>
+Date: Wed, 24 Sep 2025 14:39:19 -0300
+Subject: [PATCH] Teach netgraph to parse IPv6 addresses.
+
+This allows netgraph nodes to use IPv6 addresses in configuration.
+No changes to ngctl(8) are required to support this.
+---
+ sys/netgraph/ng_parse.c | 89 +++++++++++++++++++++++++++++++++++++++++
+ sys/netgraph/ng_parse.h |  8 ++++
+ 2 files changed, 97 insertions(+)
+
+diff --git a/sys/netgraph/ng_parse.c b/sys/netgraph/ng_parse.c
+index 5e1a1bb47ac0..79223daace6d 100644
+--- a/sys/netgraph/ng_parse.c
++++ b/sys/netgraph/ng_parse.c
+@@ -49,6 +49,7 @@
+ #include <sys/malloc.h>
+ #include <sys/mbuf.h>
+ #include <sys/ctype.h>
++#include <sys/socket.h>
+ #include <sys/stdarg.h>
+ 
+ #include <net/ethernet.h>
+@@ -59,6 +60,9 @@
+ #include <netgraph/netgraph.h>
+ #include <netgraph/ng_parse.h>
+ 
++/* sys/libkern/inet_ntop.c not in a header */
++#define NS_IN6ADDRSZ	16
++
+ #ifdef NG_SEPARATE_MALLOC
+ static MALLOC_DEFINE(M_NETGRAPH_PARSE, "netgraph_parse", "netgraph parse info");
+ #else
+@@ -1007,6 +1011,91 @@ const struct ng_parse_type ng_parse_ipaddr_type = {
+ 	ng_int32_getAlign
+ };
+ 
++/*
++ * Looking at ng_parse.h we would be parsing ???=ipv6:address
++ * So leading space is not a concern. Will we get trailing space? In ng_parse.h
++ * it states:
++ *     "that the ASCII representation of your type's value must not contain any
++ *     whitespace or any of these characters: { } [ ] = "
++ *
++ * That is actually perfect for us. I wonder why it wasn't used for ipv4 above?
++ * Maybe because we still have to update `off` which means get a strlen?
++ * The big issue is we must have our string '\0' terminated, and it won't be.
++ *
++ * Max IPv6 is AAAA:BBBB:CCCC:DDDD:EEEE:FFFF:www.xxx.yyy.zzz that is it has
++ * IPv4 in last part. So 46 with '\0' also INET6_ADDRSTRLEN in in6.h
++ */
++static int
++ng_ip6addr_parse(const struct ng_parse_type *type,
++	const char *s, int *off, const u_char *const start,
++	u_char *const buf, int *buflen)
++{
++	int error, sz = 0;
++	char addr_str[INET6_ADDRSTRLEN];
++
++	/*
++	 * ng_parse.h shows parsing structures, which shouldn't use ',' but it
++	 * mostly works with ',' between them instead of space. Just in case lets
++	 * also work if there is a comma after address.
++	 */
++	while (!isspace(s[*off + sz]) && s[*off + sz] != ',')
++		sz++;
++	if (sz >= INET6_ADDRSTRLEN)
++		return (EINVAL);
++
++	strncpy(addr_str, s + *off, INET6_ADDRSTRLEN);
++	addr_str[sz] = '\0'; 
++	error = inet_pton(AF_INET6, addr_str, buf);
++	if (error != 1)
++		return (EINVAL);
++
++	*off += sz;
++	*buflen = NS_IN6ADDRSZ;
++	return (0);
++}
++
++static int
++ng_ip6addr_unparse(const struct ng_parse_type *type,
++	const u_char *data, int *off, char *cbuf, int cbuflen)
++{
++	struct in6_addr ip6;
++	char addr_str[INET6_ADDRSTRLEN];
++	int error;
++
++	bcopy(data + *off, &ip6, sizeof(ip6));
++	if (NULL == inet_ntop(AF_INET6, &ip6, addr_str, INET6_ADDRSTRLEN))
++		return (EINVAL);
++
++	if ((error = ng_parse_append(&cbuf, &cbuflen, addr_str)) != 0)
++		return (error);
++
++	*off += sizeof(ip6);
++	return (0);
++}
++
++static int
++ng_ip6addr_getDefault(const struct ng_parse_type *type,
++	const u_char *const start, u_char *buf, int *buflen)
++{
++	struct in6_addr ip6 = { 0 };
++	if (*buflen < sizeof(ip6))
++		return (ERANGE);
++	bcopy(&ip6, buf, sizeof(ip6));
++	*buflen = sizeof(ip6);
++	return (0);
++
++}
++
++const struct ng_parse_type ng_parse_ip6addr_type = {
++	NULL, /* no super-type */
++	NULL, /* no type specific info */
++	NULL, /* no private info */
++	ng_ip6addr_parse,
++	ng_ip6addr_unparse,
++	ng_ip6addr_getDefault,
++	ng_int32_getAlign
++};
++
+ /************************************************************************
+ 			ETHERNET ADDRESS TYPE
+  ************************************************************************/
+diff --git a/sys/netgraph/ng_parse.h b/sys/netgraph/ng_parse.h
+index a662d38f4463..4716f07b66f8 100644
+--- a/sys/netgraph/ng_parse.h
++++ b/sys/netgraph/ng_parse.h
+@@ -440,6 +440,14 @@ extern const struct ng_parse_type ng_parse_hint64_type;
+  */
+ extern const struct ng_parse_type ng_parse_ipaddr_type;
+ 
++/*
++ * IP6 ADDRESS TYPE
++ *
++ *   Default value:		0:0:0:0:0:0:0:0
++ *   Additional info:		None required
++ */
++extern const struct ng_parse_type ng_parse_ip6addr_type;
++
+ /*
+  * ETHERNET ADDRESS TYPE
+  *
+-- 
+2.51.0
+

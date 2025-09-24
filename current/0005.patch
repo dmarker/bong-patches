@@ -1,0 +1,47 @@
+From 6029ca0707aa8bab5e7903f5957372f9762ede98 Mon Sep 17 00:00:00 2001
+From: David Marker <dave@freedave.net>
+Date: Wed, 24 Sep 2025 14:51:08 -0300
+Subject: [PATCH] Always call if_ioctl for virtual interfaces.
+
+Virtual interfaces may refuse (for their own reasons) to accept
+either an IPv4 or IPv6 address.
+---
+ sys/netinet/in.c   | 6 +++---
+ sys/netinet6/in6.c | 4 +++-
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/sys/netinet/in.c b/sys/netinet/in.c
+index 70a61dbf93a3..88308c311eef 100644
+--- a/sys/netinet/in.c
++++ b/sys/netinet/in.c
+@@ -630,9 +630,9 @@ in_aifaddr_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp, struct ucred *cred
+ 	    ia_hash);
+ 
+ 	/*
+-	 * Give the interface a chance to initialize
+-	 * if this is its first address,
+-	 * and to validate the address if necessary.
++	 * Give the interface a chance to initialize if this is its first
++	 * address, and to validate the address if necessary. IFT_PROPVIRTUAL
++	 * interfaces may refuse the address.
+ 	 */
+ 	if (ifp->if_ioctl != NULL) {
+ 		error = (*ifp->if_ioctl)(ifp, SIOCSIFADDR, (caddr_t)ia);
+diff --git a/sys/netinet6/in6.c b/sys/netinet6/in6.c
+index 4f756a75fac7..f4cfd77a2730 100644
+--- a/sys/netinet6/in6.c
++++ b/sys/netinet6/in6.c
+@@ -1546,7 +1546,9 @@ in6_notify_ifa(struct ifnet *ifp, struct in6_ifaddr *ia,
+ 		NET_EPOCH_EXIT(et);
+ 	}
+ 
+-	if (ifacount <= 1 && ifp->if_ioctl) {
++	/* IFT_PROPVIRTUAL always requires as it may refuse the address */
++	if ((ifacount <= 1 || ifp->if_type == IFT_PROPVIRTUAL) &&
++	    ifp->if_ioctl) {
+ 		error = (*ifp->if_ioctl)(ifp, SIOCSIFADDR, (caddr_t)ia);
+ 		if (error)
+ 			goto done;
+-- 
+2.51.0
+

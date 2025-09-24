@@ -14,12 +14,14 @@
 # bong-patches
 
 These are the required patches to FreeBSD to get [bong-kmods][10] and [bong-utils][11]
-to work. They require you rebuild both `kernel` and `world`. This is here to make
+to work. They require you rebuild both `kernel` and `world` (for stable-14) but only
+the kernel for `stable-15` and `current`. This is here to make
 it easy for me to track and for others to try [bong-kmods][10] / [bong-utils][11].
 
-I am working on getting the barest of minimum set into FreeBSD-15, the current
-development branch. While I also run them on FreeBSD-14 (stable), I do not have
-any plans to get any of these patches backported.
+I am working on getting the barest of minimum set into FreeBSD-16, the current
+development branch. While I also run them on FreeBSD-14 and FreeBSD-15 (stable),
+I do not have any plans to get any of these patches backported to FreeBSD-14. As
+development moves to FreeBSD-16 I will at some point cease maintaining stable-14.
 
 | Patch | Review       | Commit        | Description |
 | :---- | :----------- | :------------ | :---------- |
@@ -40,7 +42,8 @@ patch. The bug was mentioned and discussed in the same review [D44615][20] as it
 broke automated tests.
 
 The examples in [bong-utils][11] assume you have [86a6393][30] and [46f38a6][31].
-The `jeiface` utility in [bong-utils][11] assumes you have [72d01e6][32].
+The `jeiface` utility in [bong-utils][11] assumes you have [72d01e6][32]. Which you
+should anyway for FreeBSD-15 or current.
 
 Both `ng_siit` and `ng_nat64` will require the last two patches. There is no
 way to use them without these.
@@ -48,11 +51,11 @@ way to use them without these.
 My plan, if everything in table is merged, is to make 2 ports for [bong-kmods][10]
 and [bong-utils][11].
 
-I won't put [0004.patch](15/0004.patch) or [0005.patch](15/0005.patch) up for
-review until the nodes that use them are ready. [0004.patch](15/0004.patch) should
-not be controversial. [0005.patch](15/0005.patch) uses the same flag that ng_iface(4)
-uses and I will not be surprised if I'm requested to use a new flag instead (which
-is fine).
+I won't put [0004.patch](current/0004.patch) or [0005.patch](current/0005.patch)
+up for review until the nodes that use them are ready. [0004.patch](current/0004.patch)
+should not be controversial. [0005.patch](current/0005.patch) uses the same flag that
+ng_iface(4) uses and I will not be surprised if I'm requested to use a new flag instead
+(which is fine).
 
 I don't think these patches are controversial. Whereas the nodes and utilities
 in [bong-kmods][10] / [bong-utils][11] already appear so. I put up a review for
@@ -68,6 +71,7 @@ I only update this when I update the systems I have still using FreeBSD-14 (all
 on 14/stable). So the patches may need help to apply cleanly.
 
 
-# 15
+# 15-stable / current
 
 The patches get the same numbers as 14/stable so if its missing here its merged.
+
