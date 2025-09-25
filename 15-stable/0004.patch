@@ -1,6 +1,6 @@
-From 6f618e7b1aa07c3fbcf1f23d3ecd1f3b30e3299e Mon Sep 17 00:00:00 2001
+From ae2c7efdd058303e1219c22668ab089e91e9a8cc Mon Sep 17 00:00:00 2001
 From: David Marker <dave@freedave.net>
-Date: Sat, 2 Aug 2025 07:19:58 -0300
+Date: Thu, 25 Sep 2025 15:09:31 -0300
 Subject: [PATCH] Teach netgraph to parse IPv6 addresses.
 
 This allows netgraph nodes to use IPv6 addresses in configuration.
@@ -11,17 +11,10 @@ No changes to ngctl(8) are required to support this.
  2 files changed, 97 insertions(+)
 
 diff --git a/sys/netgraph/ng_parse.c b/sys/netgraph/ng_parse.c
-index 448ecc92f0..1578f9963b 100644
+index 5e1a1bb47ac0..79223daace6d 100644
 --- a/sys/netgraph/ng_parse.c
 +++ b/sys/netgraph/ng_parse.c
-@@ -42,30 +42,34 @@
- 
- #include <sys/types.h>
- #include <sys/param.h>
- #include <sys/systm.h>
- #include <sys/kernel.h>
- #include <sys/errno.h>
- #include <sys/limits.h>
+@@ -49,6 +49,7 @@
  #include <sys/malloc.h>
  #include <sys/mbuf.h>
  #include <sys/ctype.h>
@@ -29,10 +22,7 @@ index 448ecc92f0..1578f9963b 100644
  #include <sys/stdarg.h>
  
  #include <net/ethernet.h>
- 
- #include <netinet/in.h>
- 
- #include <netgraph/ng_message.h>
+@@ -59,6 +60,9 @@
  #include <netgraph/netgraph.h>
  #include <netgraph/ng_parse.h>
  
@@ -42,21 +32,7 @@ index 448ecc92f0..1578f9963b 100644
  #ifdef NG_SEPARATE_MALLOC
  static MALLOC_DEFINE(M_NETGRAPH_PARSE, "netgraph_parse", "netgraph parse info");
  #else
- #define M_NETGRAPH_PARSE M_NETGRAPH
- #endif
- 
- /* Compute alignment for primitive integral types */
- struct int16_temp {
- 	char	x;
- 	int16_t	y;
-@@ -1000,20 +1004,105 @@ ng_ipaddr_getDefault(const struct ng_parse_type *type,
- const struct ng_parse_type ng_parse_ipaddr_type = {
- 	NULL,
- 	NULL,
- 	NULL,
- 	ng_ipaddr_parse,
- 	ng_ipaddr_unparse,
- 	ng_ipaddr_getDefault,
+@@ -1007,6 +1011,91 @@ const struct ng_parse_type ng_parse_ipaddr_type = {
  	ng_int32_getAlign
  };
  
@@ -148,25 +124,11 @@ index 448ecc92f0..1578f9963b 100644
  /************************************************************************
  			ETHERNET ADDRESS TYPE
   ************************************************************************/
- 
- static int
- ng_enaddr_parse(const struct ng_parse_type *type,
- 	const char *s, int *const off, const u_char *const start,
- 	u_char *const buf, int *const buflen)
- {
- 	char *eptr;
 diff --git a/sys/netgraph/ng_parse.h b/sys/netgraph/ng_parse.h
-index a662d38f44..4716f07b66 100644
+index a662d38f4463..4716f07b66f8 100644
 --- a/sys/netgraph/ng_parse.h
 +++ b/sys/netgraph/ng_parse.h
-@@ -433,20 +433,28 @@ extern const struct ng_parse_type ng_parse_hint32_type;
- extern const struct ng_parse_type ng_parse_hint64_type;
- 
- /*
-  * IP ADDRESS TYPE
-  *
-  *   Default value:		0.0.0.0
-  *   Additional info:		None required
+@@ -440,6 +440,14 @@ extern const struct ng_parse_type ng_parse_hint64_type;
   */
  extern const struct ng_parse_type ng_parse_ipaddr_type;
  
@@ -181,13 +143,6 @@ index a662d38f44..4716f07b66 100644
  /*
   * ETHERNET ADDRESS TYPE
   *
-  *   Default value:		None
-  *   Additional info:		None required
-  */
- extern const struct ng_parse_type ng_parse_enaddr_type;
- 
- /*
-  * VARIABLE LENGTH BYTE ARRAY TYPE
 -- 
-2.48.1
+2.51.0
 
