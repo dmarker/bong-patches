@@ -1,10 +1,12 @@
-From 72b7d8181ed8e54d57e0afe1495e3fa1b122ba5e Mon Sep 17 00:00:00 2001
+From f7f5e20d60135facf0759a253cabb639b529ddfc Mon Sep 17 00:00:00 2001
 From: David Marker <dave@freedave.net>
-Date: Thu, 31 Jul 2025 13:45:53 -0300
-Subject: [PATCH 1/2] ng_bridge: allow to automatically assign numbers to new
- hooks This will allow a userland machinery that orchestrates a bridge (e.g. a
- jail or vm manager) to not double the number allocation logic.  See bug
- 278130 for longer description and examples.
+Date: Mon, 29 Sep 2025 11:14:44 -0300
+Subject: [PATCH 1/5] ng_bridge: allow to automatically assign numbers to new
+ hooks
+
+This will allow a userland machinery that orchestrates a bridge (e.g. a
+jail or vm manager) to not double the number allocation logic.  See bug
+278130 for longer description and examples.
 
 Reviewed by:		glebius, afedorov
 Differential Revision:	https://reviews.freebsd.org/D44615
@@ -18,14 +20,7 @@ diff --git a/share/man/man4/ng_bridge.4 b/share/man/man4/ng_bridge.4
 index 1999214c30bc..9d7d95a1de8e 100644
 --- a/share/man/man4/ng_bridge.4
 +++ b/share/man/man4/ng_bridge.4
-@@ -101,20 +101,27 @@ This way it is desirable to connect the
- .Ar lower
- hook of an
- .Xr ng_ether 4
- node to an
- .Ar uplink
- hook of the bridge, and ignore the complexity of the outside world.
- Frames with unknown MACs are always sent out to
+@@ -108,6 +108,13 @@ Frames with unknown MACs are always sent out to
  .Ar uplink
  hooks, so no functionality is lost.
  .Pp
@@ -39,25 +34,11 @@ index 1999214c30bc..9d7d95a1de8e 100644
  Frames with unknown destination MAC addresses are replicated to any
  available hook, unless the first connected hook is an
  .Ar uplink
- hook.
- In this case the node assumes, that all unknown MAC addresses are
- located soley on the
- .Ar uplink
- hooks and only those hooks will be used to send out frames with
- unknown destination MACs.
- If the first connected hook is an
 diff --git a/sys/netgraph/ng_bridge.c b/sys/netgraph/ng_bridge.c
 index ebe811acc5b5..b253d4090e6b 100644
 --- a/sys/netgraph/ng_bridge.c
 +++ b/sys/netgraph/ng_bridge.c
-@@ -117,45 +117,63 @@ struct ng_bridge_private {
- 	struct ng_bridge_bucket	*tab;		/* hash table bucket array */
- 	struct ng_bridge_config	conf;		/* node configuration */
- 	node_p			node;		/* netgraph node */
- 	u_int			numHosts;	/* num entries in table */
- 	u_int			numBuckets;	/* num buckets in table */
- 	u_int			hashMask;	/* numBuckets - 1 */
- 	int			numLinks;	/* num connected links */
+@@ -124,6 +124,8 @@ struct ng_bridge_private {
  	unsigned int		persistent : 1,	/* can exist w/o hooks */
  				sendUnknown : 1;/* links receive unknowns by default */
  	struct callout		timer;		/* one second periodic timer */
@@ -66,16 +47,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  };
  typedef struct ng_bridge_private *priv_p;
  typedef struct ng_bridge_private const *priv_cp;	/* read only access */
- 
- /* Information about a host, stored in a hash table entry */
- struct ng_bridge_host {
- 	u_char		addr[6];	/* ethernet address */
- 	link_p		link;		/* link where addr can be found */
- 	u_int16_t	age;		/* seconds ago entry was created */
- 	u_int16_t	staleness;	/* seconds ago host last heard from */
- 	SLIST_ENTRY(ng_bridge_host)	next;	/* next entry in bucket */
- };
- 
+@@ -140,6 +142,21 @@ struct ng_bridge_host {
  /* Hash table bucket declaration */
  SLIST_HEAD(ng_bridge_bucket, ng_bridge_host);
  
@@ -97,9 +69,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  /* Netgraph node methods */
  static ng_constructor_t	ng_bridge_constructor;
  static ng_rcvmsg_t	ng_bridge_rcvmsg;
- static ng_shutdown_t	ng_bridge_shutdown;
- static ng_newhook_t	ng_bridge_newhook;
- static ng_rcvdata_t	ng_bridge_rcvdata;
+@@ -149,6 +166,7 @@ static ng_rcvdata_t	ng_bridge_rcvdata;
  static ng_disconnect_t	ng_bridge_disconnect;
  
  /* Other internal functions */
@@ -107,21 +77,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  static void	ng_bridge_free_link(link_p link);
  static struct	ng_bridge_host *ng_bridge_get(priv_cp priv, const u_char *addr);
  static int	ng_bridge_put(priv_p priv, const u_char *addr, link_p link);
- static void	ng_bridge_rehash(priv_p priv);
- static void	ng_bridge_remove_hosts(priv_p priv, link_p link);
- static void	ng_bridge_timeout(node_p node, hook_p hook, void *arg1, int arg2);
- static const	char *ng_bridge_nodename(node_cp node);
- 
- /* Ethernet broadcast */
- static const u_char ng_bridge_bcast_addr[ETHER_ADDR_LEN] =
-@@ -343,64 +361,82 @@ ng_bridge_constructor(node_p node)
- 	priv->hashMask = MIN_BUCKETS - 1;
- 	priv->conf.debugLevel = 1;
- 	priv->conf.loopTimeout = DEFAULT_LOOP_TIMEOUT;
- 	priv->conf.maxStaleness = DEFAULT_MAX_STALENESS;
- 	priv->conf.minStableAge = DEFAULT_MIN_STABLE_AGE;
- 	priv->sendUnknown = 1;	       /* classic bridge */
- 
+@@ -350,6 +368,10 @@ ng_bridge_constructor(node_p node)
  	NG_NODE_SET_PRIVATE(node, priv);
  	priv->node = node;
  
@@ -132,14 +88,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  	/* Start timer; timer is always running while node is alive */
  	ng_callout(&priv->timer, node, NULL, hz, ng_bridge_timeout, NULL, 0);
  
- 	/* Done */
- 	return (0);
- }
- 
- /*
-  * Method for attaching a new hook
-  */
- static	int
+@@ -364,36 +386,50 @@ static	int
  ng_bridge_newhook(node_p node, hook_p hook, const char *name)
  {
  	const priv_p priv = NG_NODE_PRIVATE(node);
@@ -213,21 +162,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  
  #define	NG_BRIDGE_COUNTER_ALLOC(f) do {			\
  	link->stats.f = counter_u64_alloc(M_NOWAIT);	\
- 	if (link->stats.f == NULL)			\
- 		goto nomem;				\
- } while (0)
- 	NG_BRIDGE_COUNTER_ALLOC(recvOctets);
- 	NG_BRIDGE_COUNTER_ALLOC(recvPackets);
- 	NG_BRIDGE_COUNTER_ALLOC(recvMulticasts);
- 	NG_BRIDGE_COUNTER_ALLOC(recvBroadcasts);
-@@ -424,20 +460,21 @@ ng_bridge_newhook(node_p node, hook_p hook, const char *name)
- 	} else {
- 		link->learnMac = 1;
- 		link->sendUnknown = priv->sendUnknown;
- 	}
- 
- 	NG_HOOK_SET_PRIVATE(hook, link);
- 	priv->numLinks++;
+@@ -431,6 +467,7 @@ ng_bridge_newhook(node_p node, hook_p hook, const char *name)
  	return (0);
  
  nomem:
@@ -235,21 +170,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  	ng_bridge_free_link(link);
  	return (ENOMEM);
  }
- 
- /*
-  * Receive a control message
-  */
- static void
- ng_bridge_clear_link_stats(struct ng_bridge_link_kernel_stats *p)
- {
-@@ -906,44 +943,52 @@ ng_bridge_shutdown(node_p node)
- 	/*
- 	 * Shut down everything including the timer.  Even if the
- 	 * callout has already been dequeued and is about to be
- 	 * run, ng_bridge_timeout() won't be fired as the node
- 	 * is already marked NGF_INVALID, so we're safe to free
- 	 * the node now.
- 	 */
+@@ -913,6 +950,8 @@ ng_bridge_shutdown(node_p node)
  	KASSERT(priv->numLinks == 0 && priv->numHosts == 0,
  	    ("%s: numLinks=%d numHosts=%d",
  	    __func__, priv->numLinks, priv->numHosts));
@@ -258,14 +179,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  	ng_uncallout(&priv->timer, node);
  	NG_NODE_SET_PRIVATE(node, NULL);
  	NG_NODE_UNREF(node);
- 	free(priv->tab, M_NETGRAPH_BRIDGE);
- 	free(priv, M_NETGRAPH_BRIDGE);
- 	return (0);
- }
- 
- /*
-  * Hook disconnection.
-  */
+@@ -927,8 +966,11 @@ ng_bridge_shutdown(node_p node)
  static int
  ng_bridge_disconnect(hook_p hook)
  {
@@ -277,8 +191,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  
  	/* Remove all hosts associated with this link */
  	ng_bridge_remove_hosts(priv, link);
- 
- 	/* Free associated link information */
+@@ -937,6 +979,9 @@ ng_bridge_disconnect(hook_p hook)
  	ng_bridge_free_link(link);
  	priv->numLinks--;
  
@@ -288,21 +201,7 @@ index ebe811acc5b5..b253d4090e6b 100644
  	/* If no more hooks, go away */
  	if ((NG_NODE_NUMHOOKS(NG_HOOK_NODE(hook)) == 0)
  	    && (NG_NODE_IS_VALID(NG_HOOK_NODE(hook)))
- 	    && !priv->persistent) {
- 		ng_rmnode_self(NG_HOOK_NODE(hook));
- 	}
- 	return (0);
- }
- 
- /******************************************************************
-@@ -1088,20 +1133,32 @@ ng_bridge_rehash(priv_p priv)
- 	priv->numBuckets = newNumBuckets;
- 	priv->hashMask = newMask;
- 	priv->tab = newTab;
- 	return;
- }
- 
- /******************************************************************
+@@ -1095,6 +1140,18 @@ ng_bridge_rehash(priv_p priv)
  		    MISC FUNCTIONS
  ******************************************************************/
  
@@ -321,13 +220,6 @@ index ebe811acc5b5..b253d4090e6b 100644
  /*
   * Remove all hosts associated with a specific link from the hashtable.
   * If linkNum == -1, then remove all hosts in the table.
-  */
- static void
- ng_bridge_remove_hosts(priv_p priv, link_p link)
- {
- 	int bucket;
- 
- 	for (bucket = 0; bucket < priv->numBuckets; bucket++) {
 -- 
-2.48.1
+2.51.0
 

@@ -1,11 +1,16 @@
-From 94243d1524060d3bc466383ecc56cf50482cc1c1 Mon Sep 17 00:00:00 2001
-From: David Marker <dave@freedave.net>
-Date: Thu, 31 Jul 2025 14:09:19 -0300
-Subject: [PATCH] Teach ngctl to attach and run itself in a jail.
+From 625212aacd8f87d23aaa9dba6c3996a0f78c4dd9 Mon Sep 17 00:00:00 2001
+From: Jamie Gritton <jamie@FreeBSD.org>
+Date: Mon, 29 Sep 2025 11:27:41 -0300
+Subject: [PATCH 3/5] netgraph: teach ngctl to attach and run itself in a jail
 
-Add -j <jail> flag to ngctl to allow ngctl to attach and run inside a
-jail. This allow parent to manipulate netgraph nodes in the jail
+Add -j <jail> flag to ngctl to allow ngctl to attach and run inside
+a jail. This allow parent to manipulate netgraph nodes in the jail
 even if ngctl is not available.
+
+Submitted by:	David Marker <dave_freedave.net>
+Reviewed by:	kevans, zlei, jamie
+Relnotes:	yes
+Differential Revision:	https://reviews.freebsd.org/D50241
 ---
  usr.sbin/ngctl/Makefile |  5 +++++
  usr.sbin/ngctl/main.c   | 43 ++++++++++++++++++++++++++++++++++-------
@@ -16,14 +21,7 @@ diff --git a/usr.sbin/ngctl/Makefile b/usr.sbin/ngctl/Makefile
 index 72a5ccaa96d7..997841272376 100644
 --- a/usr.sbin/ngctl/Makefile
 +++ b/usr.sbin/ngctl/Makefile
-@@ -6,11 +6,16 @@ PROG=	ngctl
- MAN=	ngctl.8
- SRCS=	main.c mkpeer.c config.c connect.c dot.c name.c show.c list.c \
- 	msg.c debug.c shutdown.c rmhook.c status.c types.c write.c
- WARNS?=	3
- 
- LIBADD=	netgraph
- 
+@@ -13,4 +13,9 @@ LIBADD=	netgraph
  CFLAGS+= -DEDITLINE
  LIBADD+=	edit pthread
  
@@ -37,14 +35,7 @@ diff --git a/usr.sbin/ngctl/main.c b/usr.sbin/ngctl/main.c
 index b9e88681d593..e957bc7db992 100644
 --- a/usr.sbin/ngctl/main.c
 +++ b/usr.sbin/ngctl/main.c
-@@ -49,20 +49,24 @@
- #include <stdio.h>
- #include <stdlib.h>
- #include <string.h>
- #include <sysexits.h>
- #include <unistd.h>
- #ifdef EDITLINE
- #include <signal.h>
+@@ -56,6 +56,10 @@
  #include <histedit.h>
  #include <pthread.h>
  #endif
@@ -55,21 +46,7 @@ index b9e88681d593..e957bc7db992 100644
  
  #include <netgraph.h>
  
- #include "ngctl.h"
- 
- #define PROMPT			"+ "
- #define MAX_ARGS		512
- #define WHITESPACE		" \t\r\n\v\f"
- #define DUMP_BYTES_PER_LINE	16
- 
-@@ -131,52 +135,76 @@ const struct ngcmd quit_cmd = {
- 
- /* Our control and data sockets */
- int	csock, dsock;
- 
- /*
-  * main()
-  */
+@@ -138,16 +142,17 @@ int	csock, dsock;
  int
  main(int ac, char *av[])
  {
@@ -92,10 +69,7 @@ index b9e88681d593..e957bc7db992 100644
  		switch (ch) {
  		case 'd':
  			NgSetDebug(NgSetDebug(-1) + 1);
- 			break;
- 		case 'f':
- 			if (strcmp(optarg, "-") == 0)
- 				fp = stdin;
+@@ -158,18 +163,41 @@ main(int ac, char *av[])
  			else if ((fp = fopen(optarg, "r")) == NULL)
  				err(EX_NOINPUT, "%s", optarg);
  			break;
@@ -138,21 +112,7 @@ index b9e88681d593..e957bc7db992 100644
  	/* Create a new socket node */
  	if (NgMkSockNode(name, &csock, &dsock) < 0)
  		err(EX_OSERR, "can't create node");
- 
- 	/* Do commands as requested */
- 	if (ac == 0) {
- 		if (fp != NULL) {
- 			rtn = ReadFile(fp);
- 		} else if (interactive) {
- 			rtn = DoInteractive();
-@@ -651,13 +679,14 @@ DumpAscii(const u_char *buf, int len)
- 
- /*
-  * Usage()
-  */
- static void
- Usage(const char *msg)
- {
+@@ -658,6 +686,7 @@ Usage(const char *msg)
  	if (msg)
  		warnx("%s", msg);
  	fprintf(stderr,
@@ -165,14 +125,7 @@ diff --git a/usr.sbin/ngctl/ngctl.8 b/usr.sbin/ngctl/ngctl.8
 index 2225c836674a..4189beb0a6b7 100644
 --- a/usr.sbin/ngctl/ngctl.8
 +++ b/usr.sbin/ngctl/ngctl.8
-@@ -32,24 +32,25 @@
- .\" $Whistle: ngctl.8,v 1.6 1999/01/20 03:19:44 archie Exp $
- .\"
- .Dd January 19, 1999
- .Dt NGCTL 8
- .Os
- .Sh NAME
- .Nm ngctl
+@@ -39,10 +39,11 @@
  .Nd netgraph control utility
  .Sh SYNOPSIS
  .Nm
@@ -185,21 +138,7 @@ index 2225c836674a..4189beb0a6b7 100644
  .Sh DESCRIPTION
  The
  .Nm
- utility creates a new netgraph node of type
- .Em socket
- which can be used to issue netgraph commands.
- If no
- .Fl f
- flag is given, no
- command is supplied on the command line, and standard input is a tty,
-@@ -66,26 +67,45 @@ supports binary/ASCII control message conversion.
- .Pp
- In interactive mode,
- .Nm
- will display any control messages and data packets received by the socket node.
- In the case of control messages, the message arguments are displayed in
- .Tn ASCII
- form if the originating node supports conversion.
+@@ -73,12 +74,31 @@ form if the originating node supports conversion.
  .Pp
  The options are as follows:
  .Bl -tag -width indent
@@ -232,13 +171,6 @@ index 2225c836674a..4189beb0a6b7 100644
  .It Fl n Ar nodename
  Assign
  .Em nodename
- to the newly created netgraph node.
- The default name is
- .Em ngctlXXX
- where XXX is the process ID number.
- .It Fl d
- Increase the debugging verbosity level.
- .El
 -- 
-2.48.1
+2.51.0
 

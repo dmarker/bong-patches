@@ -1,12 +1,14 @@
-From 67a854731a04e393d924b54ea802b60bda069888 Mon Sep 17 00:00:00 2001
+From 5fd760d660320f7288f16af6eddd8a83da3bdc32 Mon Sep 17 00:00:00 2001
 From: Mark Johnston <markj@FreeBSD.org>
-Date: Thu, 31 Jul 2025 13:46:22 -0300
-Subject: [PATCH 2/2] netgraph: Exit the net epoch to handle control messages
- In general, in the direct dispatch case netgraph only enters the net epoch to
- send data messages, but this was inconsistent with the netgraph thread, which
- also entered the net epoch to send fn and fn2 messages to nodes.  Some
- handlers, e.g., ng_bridge_newhook(), may sleep, and so cannot be called in
- epoch context; the netgraph tests occasionally panic due to this problem.
+Date: Mon, 29 Sep 2025 11:22:22 -0300
+Subject: [PATCH 2/5] netgraph: Exit the net epoch to handle control messages
+
+In general, in the direct dispatch case netgraph only enters the net
+epoch to send data messages, but this was inconsistent with the netgraph
+thread, which also entered the net epoch to send fn and fn2 messages to
+nodes.  Some handlers, e.g., ng_bridge_newhook(), may sleep, and so
+cannot be called in epoch context; the netgraph tests occasionally panic
+due to this problem.
 
 Make ngthread() consistent with the direct dispatch path.
 
@@ -21,14 +23,7 @@ diff --git a/sys/netgraph/ng_base.c b/sys/netgraph/ng_base.c
 index 5bff0663e03e..77c7cb0d3c00 100644
 --- a/sys/netgraph/ng_base.c
 +++ b/sys/netgraph/ng_base.c
-@@ -3433,24 +3433,27 @@ ngthread(void *arg)
- 			NG_QUEUE_LOCK(&node->nd_input_queue);
- 			item = ng_dequeue(node, &rw);
- 			if (item == NULL) {
- 				node->nd_input_queue.q_flags2 &= ~NGQ2_WORKQ;
- 				NG_QUEUE_UNLOCK(&node->nd_input_queue);
- 				break; /* go look for another node */
- 			} else {
+@@ -3440,10 +3440,13 @@ ngthread(void *arg)
  				NG_QUEUE_UNLOCK(&node->nd_input_queue);
  				NGI_GET_NODE(item, node); /* zaps stored node */
  
@@ -45,13 +40,6 @@ index 5bff0663e03e..77c7cb0d3c00 100644
  					 */
  					NET_EPOCH_EXIT(et);
  					ng_apply_item(node, item, rw);
- 					NET_EPOCH_ENTER(et);
- 				} else {
- 					ng_apply_item(node, item, rw);
- 				}
- 
- 				NG_NODE_UNREF(node);
- 			}
 -- 
-2.48.1
+2.51.0
 
