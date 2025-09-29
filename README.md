@@ -10,6 +10,7 @@
 [30]: https://github.com/freebsd/freebsd-src/commit/86a6393a7d6766875a9e03daa0273a2e55faacdd
 [31]: https://github.com/freebsd/freebsd-src/commit/46f38a6dedb1b474f04b7c2b072825fda5d7bd5a
 [32]: https://github.com/freebsd/freebsd-src/commit/72d01e62b082de39ecf1ff3ced67dcf7259e5084
+[33]: https://github.com/freebsd/freebsd-src/commit/685e60e860d61f6e1bcf981f5c30647e0c025702
 
 # bong-patches
 
@@ -40,6 +41,11 @@ are ready.
 The second was not written by me, it was a bug I caused/exposed with my first
 patch. The bug was mentioned and discussed in the same review [D44615][20] as it
 broke automated tests.
+
+There is one more you patch you need for FreeBSD-14 if you build your world without
+jail support (EINCONCEIVABLE!): [685e60e][33].
+Sigh, that makes 100% of my commits to date required a follow on fix for something
+I feel like I should have caught myself.
 
 The examples in [bong-utils][11] assume you have [86a6393][30] and [46f38a6][31].
 The `jeiface` utility in [bong-utils][11] assumes you have [72d01e6][32]. Which you
