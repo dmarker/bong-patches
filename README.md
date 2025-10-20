@@ -1,3 +1,6 @@
+[98]: https://reviews.freebsd.org/D49405
+[99]: https://reviews.freebsd.org/D49158
+
 [10]: https://github.com/dmarker/bong-kmods
 [11]: https://github.com/dmarker/bong-utils
 
@@ -65,7 +68,7 @@ ng_iface(4) uses and I will not be surprised if I'm requested to use a new flag 
 
 I don't think these patches are controversial. Whereas the nodes and utilities
 in [bong-kmods][10] / [bong-utils][11] already appear so. I put up a review for
-[ng_wormhole(4)][23] and [ngportal][24] but plan to abandon them in preference
+[ng_wormhole(4)][23] and [ngportal][24] but have abandoned them in preference
 of [bong-kmods][10] / [bong-utils][11].
 
 # 14-stable
